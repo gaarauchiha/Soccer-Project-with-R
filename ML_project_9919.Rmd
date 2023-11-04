@@ -1,0 +1,739 @@
+---
+title: "ML Soccer Project"
+subtitle: 'A Data Analysis Using R'
+author: " "
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+date: "2023-11-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+```
+
+
+## Abstract
+In this machine learning project we focuse on analyzing soccer games through the application of preprocessing techniques, data visualization, regression modeling and predictive modeling. The objective is to gain valuable insights from soccer game data and develop models that can accurately predict game outcomes.
+
+Soccer, being one of the most popular sports worldwide, presents a rich source of data that captures the intricacies of team dynamics, player performance and game conditions. By leveraging machine learning techniques, this project aims to unlock hidden patterns and relationships within soccer game data.
+
+The project begins with data preprocessing, where raw soccer game data is cleaned, transformed, and organized into a suitable format for analysis. Various preprocessing techniques such as handling missing data, feature scaling, and feature engineering are employed to enhance the quality and relevance of the dataset.
+
+Following preprocessing, the data is visualized using plots and visualizations. These visualizations help uncover patterns, trends, and relationships within the data like the influence of possession, shots on target, or team formations on game outcomes. By analyzing these visual representations, the project aims to provide a comprehensive understanding of the soccer game data and identify key factors that contribute to team success.
+
+
+
+## Introduction
+Soccer, which is widely known as "football" all over the world, has captivated millions of fans worldwide with its electrifying matches, remarkable skill displays and intense team rivalries such as *Manchester United vs Liverpool* or *RealMadrid vs Barcelona*. As the popularity of soccer continues to soar, there is a growing interest in leveraging data analysis and machine learning techniques to gain insights into the intricacies of the game. This project endeavors to explore the realm of soccer game analysis by applying preprocessing techniques, data visualization and regression modelin to unlock valuable information hidden within the vast amounts of soccer game data.
+
+In recent years, the availability of comprehensive and detailed soccer game data has surged, thanks to advancements in data collection technologies and the widespread adoption of statistical tracking systems. This wealth of data captures various aspects of the game, including team and player statistics, game conditions and match outcomes. By harnessing the power of machine learning, this project aims to extract meaningful patterns and relationships from this data, shedding light on the factors that contribute to team success and game outcomes.
+
+The journey towards understanding soccer game data begins with preprocessing, a crucial step in data analysis. Raw data often contains inconsistencies, missing values and noise that can hinder accurate analysis. Through careful data cleaning, transformation and feature engineering techniques, the data is prepared for subsequent analysis, ensuring its quality and relevance.
+
+Data visualization plays a pivotal role in uncovering insights and driving understanding. By employing various visualization techniques such as scatter plots, heatmaps, and interactive dashboards, the project aims to visually represent the relationships between different variables and identify key factors that influence the outcome of soccer games. These visualizations not only enhance comprehension but also serve as powerful tools for communicating findings to stakeholders.
+
+Regression modeling offers a robust framework to examine the intricate dependencies between independent variables and game outcomes. By building regression models, relationships between team performance metrics, player contributions, and game conditions can be quantified, enabling a deeper understanding of the factors that drive success in soccer. These models lay the foundation for uncovering key performance indicators and strategic insights that can guide teams and coaches in optimizing their gameplay.
+
+Overall, this project will demonstrate the power of machine learning in analyzing soccer games and provide insights into player and team performance. By building different models, we can help coaches and analysts make better decisions and improve the performance of their teams.
+
+
+## Methodology
+
+The project begins by installing and loading the necessary packages in R, such as "tidyverse" and "broom" for data manipulation and visualization. Also a random seed is set to ensure reproducibility of results throughout the project.
+The main dataset used for analysis is sourced from the Kaggle dataset titled "International football results from 1872 to 2017"
+**[Main dataset link](https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017/data)**
+
+Now,let's dive into the actual nalyzing section.
+
++ Loding essential libraries:
+
+```{r}
+library("tidyverse")
+library("viridis")
+library("gridExtra")
+library("modelr")
+library("broom")
+library("ggrepel")
+library(lubridate)
+library(ggthemes)
+library(gridExtra)
+```
+
+
+
++ setting a seed to ensure reproducibility of results throughout the project:
+
+```{r}
+set.seed(60)
+```
+
+The code below reads in a CSV file called "results.csv" and stores it in a data frame called allmatches. The %>% operator is used to pipe the data frame into the mutate() function, which creates a new column called Year by extracting the year from the date column and converting it to a numeric format using the as.numeric() function.
+The data is for the latest World Cup which is World Cup 2022 that are available from [https://fixturedownload.com]
+```{r}
+allmatches <- suppressMessages(read_csv("results.csv")) %>% mutate(Year=as.numeric(format(date,"%Y")))
+
+
+fifa2022worldcup <- suppressMessages(read_csv("fifa-world-cup-2022.csv"))
+
+```
+
+
+Now the preprocessing stage starts and we nlean the data then transform it into our desired format while creating new.useful datasets to work with.
+
+
+```{r}
+# Step 1 Clean Data
+fifa2022worldcup_pred <- fifa2022worldcup %>% 
+  mutate(Date=as.Date(Date,"%d/%m/%Y %H:%M"),
+  ) %>% 
+  select(Date,Round='Round Number',Group,home_team='Home Team',away_team='Away Team') %>%
+  mutate(home_team=ifelse(str_detect(home_team,"Group"),ifelse(str_detect(home_team,"Winner"),
+                                                               paste0(str_replace(home_team,"Winner Group",""),"1"),
+                                                               paste0(str_replace(home_team,"Runner-up Group",""),"2")),home_team),
+         away_team=ifelse(str_detect(away_team,"Group"),ifelse(str_detect(away_team,"Winner"),
+                                                               paste0(str_replace(away_team,"Winner Group",""),"1"),
+                                                               paste0(str_replace(away_team,"Runner-up Group",""),"2")),away_team),
+         Round=ifelse(Round %in% c("1","2","3"),paste0("G"),Round),
+         Round=ifelse(Round == "Round of 16","LS",Round),
+         Round=ifelse(Round == "Quarter Finals","QF",Round),
+         Round=ifelse(Round == "Semi Finals","SF",Round),
+         Round=ifelse(Round == "Finals","F",Round)) %>% group_by(Round) %>% 
+  mutate(GameID=paste0(Round,1:n()),
+         Winner=paste0("Winner_",GameID),
+         Looser=paste0("Looser_",GameID),
+         Group=ifelse(is.na(Group),"All",Group),
+         home_team=ifelse(Group=="All",str_replace_all(home_team,"[\t\b ]",""),home_team),
+         away_team=ifelse(Group=="All",str_replace_all(away_team,"[\t\b ]",""),away_team)) %>% ungroup() 
+
+fifa2022worldcup_pred <- rbind(fifa2022worldcup_pred %>% filter((Round %in% c("G","LS"))),fifa2022worldcup_pred %>% filter(!(Round %in% c("G","LS"))) %>%
+                                 mutate(home_team=c(paste0("LS",c(1,5,7,3)),paste0("QF",c(1,3)),"SF1","SF1"),
+                                        away_team=c(paste0("LS",c(2,6,8,4)),paste0("QF",c(2,4)),"SF2","SF2")))
+
+
+```
+
+
+
+List of the teams in the tournament and merging columns,getting the domeasion of the created dataset:
+
+```{r}
+
+fifa2022teams <- fifa2022worldcup_pred %>% filter(Round=="G") %>% count(home_team) %>% select(home_team)
+fifa2022teams <- fifa2022teams$home_team
+
+
+cbind(c("Games","Variables"),dim(allmatches))
+
+```
+
+Visualization of the annual matches played in the top 7 soccer tournaments.
+
+
+```{r}
+options(repr.plot.width=7, repr.plot.height=4)
+top_7_tournaments <- allmatches %>% count(tournament) %>% top_n(7,n) %>% select(-n) 
+top_7_tournaments <- allmatches %>% filter(tournament!="Friendly") %>% ungroup() %>% 
+  mutate(Year=floor(Year/4)*4,
+         tournament=ifelse(tournament %in% top_7_tournaments$tournament,tournament,"Other")) %>%
+  group_by(tournament)
+
+ggplot(top_7_tournaments %>% count(Year) %>% filter(!is.na(Year) & !is.na(n) & Year<2016) ,
+       aes(x=Year,y=n,fill=reorder(tournament,n,sum))) + 
+  geom_area(show.legend=T, color="White",size=0.5) + scale_fill_viridis(discrete=T) + 
+  scale_x_continuous(limits=c(min(top_7_tournaments$Year),max(top_7_tournaments$Year)-1))+
+  labs(y="") + ggtitle("Footbal Matches ( Annual)") + theme_minimal()
+
+
+
+```
+As you can see, soccer has had quiet a succesfull Century, with international games taking off since the 1980s.
+despite the fact that the number of games played is enormous,we can not deny the fact that a huge chunk of this number is dedicated to friendly matches between nations and clubs.Let's take a look at the number of important national matches and compare the number of games in major tournaments vs the number of games played in not very important occasions.
+
+
+```{r}
+
+ggplot(top_7_tournaments%>% filter(!is.na(tournament))  %>% count(tournament)  , 
+       aes(x=reorder(tournament,n,sum), y=n, fill=n)) + labs(y="", x="", fill="") +
+  geom_bar(stat="identity", pos="stack",show.legend=F) + coord_flip() + 
+  scale_fill_viridis() + ggtitle("Type of Games")+ theme_minimal()
+
+```
+
+We can see that two major and famous tournaments in football,World Cup and UEFA Champions League,fill the most part of the games while other non-significant matches is a big part of the football games too.
+
+As mentioned before some of these matches are more important than the others fpr instance,FIFA World Cup is considered to be the most Football event while the Clup competetions UEFA Champions League has the second importance.
+We can confirm this importance stance by a prize named Ballon d'or(Golden Ball) which is an annual football award presented by French news magazine France Football since 1956. Between 2010 and 2015, in an agreement with FIFA, the award was temporarily merged with the FIFA World Player of the Year (founded in 1991) and known as the FIFA Ballon d'Or.
+Historically, the recipient of this award has consistently been a player whose national team has emerged victorious in the FIFA World Cup or whose club team has clinched the UEFA Champions League showinf the importance of these two competetions. In the current year, **Lionel Messi** emerged as the winner of this award. It is notable that his national team, Argentina, triumphed in the latest FIFA World Cup held in 2022. However, it is worth mentioning that his club team at that time, Paris Saint-Germain, did not secure victory in the UEFA Champions League. This exemplifies the prevailing significance of FIFA in comparison to UEFA.
+After comprehending the significance classification, one might naturally ponder: *What percentage of all football competitions can be categorized as Tier 1 (FIFA World Cup), and conversely, how much of the total football landscape is classified as less significant?*
+In order to answer this question we can get a hand from visualization techniques with some additional data manipulation and math:
+
+
+```{r}
+matches <- suppressWarnings(allmatches %>% mutate(Importance = ifelse(str_detect(tournament,"FIFA"),1,NA),
+                                 Importance = ifelse(str_detect(tournament,"UEFA"),.9,Importance),
+                                 Importance = ifelse(str_detect(tournament,"Copa América"),.5,Importance),
+                                 Importance = ifelse(str_detect(tournament,"African Cup of Nations"),.5,Importance),
+                                 Importance = ifelse(!str_detect(tournament,"Friendly") & is.na(Importance),.1,Importance),
+                                 Importance = ifelse(str_detect(tournament,"Friendly"),.01,Importance),
+                                 Importance = ifelse(str_detect(tournament,"qualification"),Importance*.75,Importance)))
+
+top5competitions <- suppressWarnings(matches %>% group_by(tournament) %>% summarise(n=n(),Importance=mean(Importance)) %>% arrange(-Importance) %>% top_n(5))
+
+options(repr.plot.width=8, repr.plot.height=4)
+ggplot(top5competitions,aes(x=n,y=Importance,colour=tournament,size=n))+
+  geom_point()+  ggtitle("Importance by Tournament")+ theme_minimal() + scale_colour_viridis(discrete=T) +
+  guides(size=FALSE) + theme(legend.position="bottom")+labs(y="",colour="",x="\nNumber of Games 1872-2022")
+
+```
+
+As you can see, FIFA World Cup matches(Main event and Qualifications for it) and UEFA matches are a significant section of the whole competetions and thus we can assume that this dataset is a reliable source to work with for the upcoming analyzes.
+
+If we consider the FIFA World Cup matches as the most important matches(which is held once in every 4 years),what is the most important match in the whole football? Final match of FIFA to determine the World Champion for the next 4 years ofcouse. Keeping that in mind,let's see who is the most prestigious national team in the world and who is the unlucky team who has lost the most world cup finals.
+
+
+```{r}
+options(repr.plot.width=4, repr.plot.height=3)
+fifa_finals <- matches %>% filter(str_detect(tournament,"FIFA") &  !str_detect(tournament,"qualification")) %>%  
+  mutate(doy=as.numeric(format(date,"%j"))) %>% group_by(Year) %>% arrange(-Year,-doy) %>% filter(doy==max(doy)) %>%
+  mutate(Winner=ifelse(home_score>away_score,home_team,away_team),
+         Looser=ifelse(home_score<away_score,home_team,away_team)) %>% ungroup() %>% select(Year,date,Winner,Looser,city)
+options(repr.plot.width=6, repr.plot.height=3)
+
+ggplot(fifa_finals %>% count(Winner), aes(x=reorder(Winner,n,sum),y=n,fill=reorder(Winner,n,sum))) + 
+  geom_bar(stat="identity", show.legend=F) + scale_fill_viridis(discrete=T) + 
+  labs(x="", y="") + ggtitle("FIFA World Cup Winners") + theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust=1))
+ggplot(fifa_finals %>% count(Looser), aes(x=reorder(Looser,n,sum),y=n,fill=reorder(Looser,n,sum))) + 
+  geom_bar(stat="identity", show.legend=F) + scale_fill_viridis(discrete=T) + 
+  labs(x="", y="") + ggtitle("FIFA World Cup Loosers") + theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust=1))
+
+```
+
+**Brazil** is the most successful Natinal team in the history of football with **5** World Cups while the unfortunate *Netherlands* alongside *Germany* are the two nations who have lost in the final FIFA World  Cup the most with 4 loses each.
+
+
+Now that we have familiarized ourselves with some valuable information about football, let's return to our primary datasets and proceed with their analysis.
+Using *results.csv* with the following data:
+
++ date: The date when the match took place, in the format "YYYY-MM-DD."
++ home_team: The name of the home team.
++ away_team: The name of the away team.
++ home_score: The number of goals scored by the home team in the match.
++ away_score: The number of goals scored by the away team in the match.
++ tournament: The name of the tournament or competition in which the match was played.
++ city: The city where the match was held.
++ country: The country where the match was held.
++ neutral: A boolean value indicating whether the match was played at a neutral venue (TRUE) or not (FALSE).
+
+
+Note that since friendly matches areinsignificant,we are going to filter them out and see the number of away wins,home wins,away goals,etc for each team:
+```{r}
+data_raw <- read.csv('results.csv', stringsAsFactors = F)
+continent_data <- read.csv('countryContinent.csv', stringsAsFactors = F) %>% 
+  select(country, continent)
+data_prep <- data_raw %>% 
+  mutate(
+    date = ymd(date),
+    year = year(date),
+    winner = ifelse(home_score > away_score, home_team,
+                    ifelse(home_score < away_score, away_team, 'Draw')),
+    looser = ifelse(home_score > away_score, away_team,
+                    ifelse(home_score < away_score, home_team, 'Draw')),
+    result = ifelse(home_score > away_score, 'Home',
+                    ifelse(home_score < away_score, 'Visitors', 'Draw'))
+  ) %>% 
+  left_join(continent_data, by = 'country')
+data_prep_official <- data_prep %>% filter(tournament != 'Friendly')
+
+winners <- data_prep_official %>% 
+  group_by(winner, year) %>% 
+  summarise(wins = n()) %>% 
+  rename(team = winner)
+
+loosers <- data_prep_official %>% 
+  group_by(looser, year) %>% 
+  summarise(looses = n()) %>% 
+  rename(team = looser)
+
+draws_home <- data_prep_official %>% 
+  filter(result == 'Draw') %>% 
+  group_by(home_team, year) %>%
+  summarise(draws_home = n()) %>% 
+  rename(team = home_team)
+
+draws_away <- data_prep_official %>% 
+  filter(result == 'Draw') %>% 
+  group_by(away_team, year) %>%
+  summarise(draws_away = n()) %>% 
+  rename(team = away_team)
+
+goals_home <- data_prep_official %>% 
+  group_by(home_team, year) %>% 
+  summarise(
+    goals_scored_home = sum(home_score),
+    goals_conc_home = sum(away_score)) %>% 
+  rename(team = home_team)
+
+goals_away <- data_prep_official %>% 
+  group_by(away_team, year) %>% 
+  summarise(
+    goals_scored_away = sum(home_score),
+    goals_conc_away = sum(away_score)) %>% 
+  rename(team = away_team)
+
+data_contries_results <- winners %>% 
+  full_join(loosers, by = c('team', 'year')) %>% 
+  full_join(draws_home, by = c('team', 'year')) %>% 
+  full_join(draws_away, by = c('team', 'year')) %>% 
+  full_join(goals_home, by = c('team', 'year')) %>% 
+  full_join(goals_away, by = c('team', 'year')) %>% 
+  mutate(
+    draws = draws_home + draws_away,
+    goals_scored = goals_scored_home + goals_scored_away,
+    goals_conc = goals_conc_home + goals_conc_away,
+    wins = ifelse(is.na(wins), 0, wins),
+    looses = ifelse(is.na(looses), 0, looses),
+    draws = ifelse(is.na(draws), 0, draws),
+    goals_scored = ifelse(is.na(goals_scored), 0, goals_scored),
+    goals_conc = ifelse(is.na(goals_conc), 0, goals_conc),
+    score = 3 * wins + draws
+  ) %>% 
+  select(-draws_home, -draws_away, -goals_scored_home, -goals_scored_away,
+         -goals_conc_home, -goals_conc_away) %>% 
+  filter(team != 'Draw') %>% 
+  ungroup() %>% 
+  arrange(team, year)
+
+```
+
+Is football getting more and more viwership? Do the number of games increases year by year?
+How much does football get affected by political matters?
+
+```{r}
+data_games <- data_prep %>% 
+  filter(
+    year > 1900,
+    continent != 'Missed'
+  ) %>% 
+  group_by(year, continent) %>% 
+  summarise(count = n()) %>% 
+  ungroup()
+
+
+
+theme_football <- function() {
+  theme_clean() +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14, color = "black", face = "bold"),
+      legend.background = element_rect(color = NA)
+    )
+}
+
+
+
+data_games %>% 
+  ggplot(aes(x = year, y = count, fill = continent)) + 
+  geom_col() +
+  geom_vline(xintercept = 1938.5, color = 'red', linetype = 'dashed') +
+  geom_vline(xintercept = 1946.5, color = 'red', linetype = 'dashed') +
+  annotate('text', x = 1942.5, y = 420, label = 'World War II', 
+           color = 'red', angle = 90, size = 6) +
+  
+  scale_x_continuous(breaks = seq(1900, 2020, 10)) +
+  theme_football() +
+  labs(x = 'Year', y = 'Games', fill = '', title = 'Compare count of games by year')
+```
+You can see that football matches are held much more often now than before. Also note the increasing share of African and Asian games
+
+
+Argentina has not always been a tier 1 team,as you may have noticed from the previous analyzes, but they are the current world champion; so how much they have improved over the last 10 years?
+Let's view the important statistics of the current World Champion,Argentina, in the last 10 years:
+
+```{r}
+data_contries_results %>% filter(team == 'Argentina', year >= 2014) %>% arrange(year)
+
+```
+Does playing risky,attacking football usually pays off?
+```{r}
+dtt <- data_contries_results %>% filter(team =='Argentina', year >= 2014) %>% arrange(year) 
+
+
+data_contries_results %>% filter( year == 2022) %>% group_by(team)%>%
+ggplot(aes(x=goals_scored,y=score,label=team)) +
+geom_point() +
+labs(x="Number of Goals Scored",
+y="Score",
+title="Score vs #Goals_Scored in 2022") +
+geom_text_repel()
+
+
+
+g_pl <- ggplot() +
+theme_bw() +
+geom_point(aes(x=year,
+y=score),
+data=dtt)
+g_pl
+
+```
+We can see an unusual rise in the score of Argentina a year before the FIFA World Cup 2022 and this trend continued in 2022,leading to their victory in that tournament.
+We can aslo see that playing beautiful,attacking football often pays off as teams which scored more goals,have often scored higher,Like Morocco and Argentina which both did great at FIFA 2022(Morroco became 4th and Argentina won the whole thing).
+
+* What's the best strategy to get qualified for FIFA World Cup? play aggressively and attack or sit back,defend and rely on counter attacks?*
+
+Now let's try to model a system which gives us a strategy to qualify to participate in the most important tournament in the football,THE WORLD CUP!
+The most important year for qualifying in the tournament is one year before it starts which means fo the previous 2022 world cup,we want to analyze 2021:
+```{r}
+
+data_countries_results2 <- winners %>% 
+  full_join(loosers, by = c('team', 'year')) %>% 
+  full_join(draws_home, by = c('team', 'year')) %>% 
+  full_join(draws_away, by = c('team', 'year')) %>% 
+  full_join(goals_home, by = c('team', 'year')) %>% 
+  full_join(goals_away, by = c('team', 'year')) %>% 
+  mutate(
+    draws = draws_home + draws_away,
+    goals_scored = goals_scored_home + goals_scored_away,
+    goals_conc = goals_conc_home + goals_conc_away,
+    wins = ifelse(is.na(wins), 0, wins),
+    looses = ifelse(is.na(looses), 0, looses),
+    draws = ifelse(is.na(draws), 0, draws),
+    goals_scored = ifelse(is.na(goals_scored), 0, goals_scored),
+    goals_conc = ifelse(is.na(goals_conc), 0, goals_conc),
+    score = 3 * wins + draws
+  ) %>% 
+  filter(team != 'Draw') %>% 
+  ungroup() %>% 
+  arrange(team, year)
+
+dtmdl <- data_countries_results2 %>% filter(year == 2021) %>% arrange(year) 
+linear_mdl <- lm(score ~ goals_scored_home+goals_scored_away+goals_conc_home+goals_conc_away ,data=dtmdl)
+summary(linear_mdl)
+
+
+```
+
+
+This,indeed, provides us with a very useful strategy. 
+In order to qualify for the FIFA World Cup, Play **aggressively at Home**(To Score more Goals) and Park a bus(a football terminology which means play **Defensively**) at **away** games.
+As you can see,this strategy will describe about **85%** of the variety in the data which is quite impressive.
+
+
+
+Let's confirm these results:
+
+```{r}
+library(GGally)
+suppressWarnings({
+  dtmdl %>%
+    select(score, goals_scored_home, goals_scored_away, goals_conc_home, goals_conc_away) %>%
+    ggpairs(na.rm = TRUE, subset = complete.cases(dtmdl)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+})
+
+```
+
+As you can see,the corrlation:
+
++ between Score and goals_scored_home = 0.859
++ between Score and goals_conc_away = 0.733
+
+which is exactly what we noticed from our linear model.
+
+
+
+Which teams have progressed the most over the past 20,30 years?
+let's see the progress of the some of the well known teams during the time:
+```{r}
+
+dt3 <- data_countries_results2%>% mutate(Goal_Agg = (goals_scored_home+goals_scored_away)-(goals_conc_home+goals_conc_away)) 
+dt4 <- dt3 %>% filter(team==c("Argentina","Brazil","England","France","Japan","Germany","Belgium","Netherlands")) %>%filter(year >= 1980)
+ggplot(dt4)+geom_point(aes(x=year,y=score,col=team),data=dt4)+
+geom_point(aes(x=year, y=score,shape=team),data=dt4) +geom_line(aes(x = year, y = score, col = team), data = dt4)
+
+
+
+```
+Although Argentina and Japan have progressed with an enormous speed over the past decade, Belgium has a more stable,constant growth rate for the past 20 years.
+
+
+
+
+Now,we will create a function for visualizing the cumulative number of wins, losses and draws in official games. 
+
+
+
+```{r}
+
+cum_results <- function(r_team) {
+  
+  data_contries_results %>% 
+    filter(team == r_team) %>% 
+    arrange(team, year) %>%
+    group_by(team) %>%
+    mutate(
+      Victories = cumsum(wins),
+      Defeats = cumsum(looses),
+      Draws = cumsum(draws)
+    ) %>%
+    ungroup() %>% 
+    select(team, year, Victories, Defeats, Draws) %>% 
+    gather(result, value, -team, -year) %>% 
+    ggplot(aes(x = year, y = value, color = result)) + 
+    geom_line() + 
+    scale_x_continuous(breaks = seq(1900, 2020, 10)) +
+    theme_football() +
+    theme(legend.direction = 'horizontal', legend.position = 'bottom') +
+    labs(x = '', y = '', color = '', title = r_team) 
+}
+
+
+
+```
+
+
+let's apply this on Japan:
+
+
+```{r}
+
+cum_results('Portugal') +
+  geom_vline(xintercept = 2014, color = 'darkgreen', linetype = 'dashed')
+
+
+```
+You can see the effect of the current Portugal squad with mature Cristiano Ronaldo,Bruno Fernandes,Bernardo Silva and Raphael Leao effect.
+
+
+
+
+How do each continent do when it comes to football(point wise)?
+
+
+```{r}
+
+data_countries_overall <- data_contries_results %>% 
+  group_by(team) %>% 
+  summarise(score = sum(score),
+            games = sum(wins) + sum(draws) + sum(looses)) %>% 
+  left_join(data_prep %>% distinct(country, continent),
+            by = c('team' = 'country')) %>% 
+  filter(!is.na(continent) & continent != 'Missed')
+
+
+
+
+
+data_countries_overall %>% 
+  ggplot(aes(x = 1, y = score)) +
+  geom_boxplot() +
+  geom_jitter(aes(color = continent), alpha = 0.6) + 
+  labs(x = '',
+       y = 'Score',
+       colour = '',
+       title = 'Distribution of scores') +
+  theme_football() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+
+```
+You can see 2 outliers.
+
+which teams have outperformed?
+
+```{r}
+
+data_countries_overall %>% 
+  arrange(desc(score)) %>% 
+  head(2)
+
+```
+
+As expected,2 Latin American giants,**Argentina and Brazil**, have outperformed the pack.
+
+
+
+
+Which countries on their own continents have the highest evolution according to its result?
+Let's build linear models cumulative scores per game ~ year and look at slope since this indicator is responsible for the intensity of function growth.
+
+
+```{r}
+
+data_slope <- data_contries_results %>% 
+  filter(
+    year >= 2000, 
+    !team %in% c('Cascadia', 'Chameria', 'Crimea',
+                 'Kabylia', 'Matabeleland', 'Monaco',
+                 'Myanmar', 'Parishes of Jersey', 'Republic of St. Pauli',
+                 'Romani people', 'Somaliland', 'Timor-Leste',
+                 'Two Sicilies', 'Western Sahara', 'Yorkshire',
+                 'Găgăuzia', 'Micronesia', 'Saint Helena',
+                 'Sark', 'Cape Verde', 'Central African Republic',
+                 'Guinea', 'Namibia')
+  ) %>% 
+  arrange(year) %>% 
+  group_by(team) %>% 
+  mutate(
+    games = wins + looses + draws,
+    mean_score = score / games,
+    cumsum_score = cumsum(mean_score)
+  ) %>% 
+  ungroup() %>% 
+  left_join(data_countries_overall %>% select(team, continent), by = 'team')
+model_res <- tibble()
+
+for (t in unique(data_slope$team)) {
+
+  data <- data_slope %>% 
+    filter(team == t) %>% 
+    select(year, cumsum_score, games)
+
+  model <- lm(cumsum_score ~ year, data)
+
+  row <- data.frame(team = t, broom::tidy(model)) %>%
+    select(team, term, estimate) %>%
+    spread(term, estimate) %>%
+    rename(slope = year) %>% 
+    cbind(data %>% summarise(games = sum(games)))
+
+  model_res <- model_res %>% rbind(row)
+}
+
+model_res <- model_res %>% 
+  arrange(desc(slope)) %>% 
+  filter(games >= 100) %>% 
+  left_join(data_countries_overall %>% select(team, continent), by = 'team')
+plot_lines <- function(cont){
+  
+  model_data <- model_res %>% filter(continent == cont)
+  
+  plot <- data_slope %>% 
+    filter(
+      continent == cont,
+      team %in% (head(model_data, 3))$team |
+        team %in% (tail(model_data, 3))$team
+    ) %>% 
+    ggplot(aes(x = year, y = cumsum_score, color = fct_reorder(team, score, .desc = T))) +
+    geom_smooth(se = F, formula = 'y ~ x', method = 'loess') +
+    labs(x = '', y = '', colour = '', title = cont) +
+    theme_football()
+    
+  plot
+}
+
+```
+
+
+
+Which teams in Asia have the highest growth rate?
+
+```{r}
+
+plot_lines('Asia')
+```
+
+Saudi Arabia,Japan and United Arab Emirates have the highest growth rate in Asia.
+
+
+
+
+Which teams in Africa have the highest growth rate?
+
+```{r}
+
+plot_lines('Africa')
+```
+
+Egypt,Nigeria and Senegal have the highest growth rate in Africa.
+
+
+Which teams in Europe have the highest growth rate?
+
+```{r}
+
+plot_lines('Europe')
+```
+
+Spain,Netherlands and Germany have the highest growth rate in Europe.
+
+Which teams in America have the highest growth rate?
+
+```{r}
+
+plot_lines('Americas')
+```
+Usual suspects,Brazil and Argentina, alongside Mexico have the highest growth rate in Americas.
+
+
+## Conclusion
+
+To put it in a nutshell, our project on soccer has provided valuable insights into the sport's popularity and its connection to political and social events and the construction of a predictive linear model. Through data visualization, we observed that football is increasingly gaining popularity worldwide. Moreover, we discovered that football is significantly influenced by political and social factors, underscoring its role as a reflection of broader societal dynamics.
+
+Using a linear model, we found a strong correlation between the score and two key variables: goals scored at home and goals conceded away. This suggests that a team's performance in these specific situations has a significant impact on the final outcome of a match.
+
+Furthermore, we conducted a comparative analysis of football progress across different countries. By assessing the development of the sport in various nations, we were able to identify emerging football powerhouses in each continent. This analysis shed light on the rising prominence of certain countries and their potential to become influential forces in the football world.
+
+We can conclude that our project highlights the multifaceted nature of soccer, encompassing aspects of culture, politics, and society. We hope the insights gained from our analysis and the predictive capabilities of our linear model contribute to a better understanding of the sport and its ongoing evolution especially to those who are not very fimiliar with this beautiful field.
+
+
+## References
+1. [https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017]
+2. [https://fixturedownload.com/download/csv/fifa-world-cup-2022]
+3. [https://www.footballytics.ch/post/data-analytics-in-football]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
